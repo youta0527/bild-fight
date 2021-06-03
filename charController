@@ -1,57 +1,344 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+#include"Object.h"
 
-public class PlayerController : MonoBehaviour
+namespace Object
 {
-    public GameObject Player;
-    public GameObject Camera;
-    public float Speed;
-    private Transform PlayerTransform;
-    private Transform CameraTransform;
-    private float i;
-    void Start()
-    {
-        PlayerTransform = transform.parent;
-        CameraTransform = GetComponent<Transform>();
-        
-    }
+	//ゲーム情報
+	DG::Image::SP Player_img;//Playerの画像
+	DG::Image::SP Enemy_img;//Enemyの画像
 
-    void Update()
-    {
-        float X_Rotation = Input.GetAxis("Mouse X");
-        float Y_Rotation = Input.GetAxis("Mouse Y");
-        PlayerTransform.transform.Rotate(0, X_Rotation, 0);
-        i = Camera.transform.localEulerAngles.x;
-        if (i > 334 && i < 360 || i > 0 && 79 > i)
-        {
-            CameraTransform.transform.Rotate(-Y_Rotation, 0, 0);
-            float k = Y_Rotation;
-        }
-        else
-        {
-            if (i > 300)
-            {
-                if(Input.GetAxis("Mouse Y")<0)
-                {
-                  CameraTransform.transform.Rotate(-Y_Rotation, 0, 0);
-                }
-            }
-            else
-            {
-                if(Input.GetAxis("Mouse Y") > 0)
-                {
-                    CameraTransform.transform.Rotate(-Y_Rotation, 0, 0);
-                }
-            }
-        }
-        float angleDir = PlayerTransform.transform.eulerAngles . y * (Mathf.PI / 180.0f);
-        Vector3 dir1 = new Vector3(Mathf.Sin(angleDir), 0, Mathf.Cos(angleDir));
-        Vector3 dir2 = new Vector3(-Mathf.Cos(angleDir), 0, Mathf.Sin(angleDir));
+	DG::Font::SP font_Player;
+	DG::Font::SP font_Enemy;
+	DG::Font::SP font_hit;
+	DG::Font::SP Player_hit;
+	DG::Font::SP Enemy_hit;
 
-        if (Input.GetKey(KeyCode.W)) PlayerTransform.transform.position += dir1 * Speed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.A)) PlayerTransform.transform.position += dir2 * Speed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.D)) PlayerTransform.transform.position += -dir2 * Speed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.S)) PlayerTransform.transform.position += -dir1 * Speed * Time.deltaTime;
-    }
+	Chara Player;//Player
+	Chara Enemy;//Enemy
+
+	bool crouch;//しゃがみ判定
+	bool jump;//ジャンプ判定
+	bool tame;//ため判定
+	bool crouch2;
+	bool hit;
+
+	int Time;
+	int tameCnt;//ため時間
+	int time;
+	//初期化
+	void Initialize()
+	{
+
+		//画像のダウンロード
+		Player_img = DG::Image::Create("./data/image/Player/advnt_full.png");
+		Enemy_img = DG::Image::Create("./data/image/Enemy/ninja_full.png");
+
+		font_Player = DG::Font::Create("HGS 教科書体", 10, 10);
+		Player_hit = DG::Font::Create("HGS 教科書体", 10, 10);
+		font_Enemy = DG::Font::Create("HGS 教科書体", 10, 10);
+		Enemy_hit = DG::Font::Create("HGS 教科書体", 10, 10);
+		font_hit = DG::Font::Create("HGS 教科書体", 10, 10);
+
+		PlayerA_I();
+		Enemy_I();
+
+		  //
+		crouch = false;
+		jump = false;
+		tame = false;
+		crouch2 = false;
+		hit = false;
+
+		Time = 0;
+		time = 0;
+	}
+
+	//終了時
+	void Finalize()
+	{
+		Player_img.reset();
+		Enemy_img.reset();
+
+		font_Player.reset();
+		font_Enemy.reset();
+		font_hit.reset();
+	}
+
+	//更新
+	void UpDate()
+	{
+		PlayerA_U();
+		AI::Amadeus(Player, Enemy,time,crouch2);
+	}
+
+	//描画
+	void Render()
+	{
+		PlayerA_R(Player);
+		EnemyA_R(Enemy);
+		ML::Box2D textBox(0, 0, 480, 270);
+		ML::Box2D textBox2(0, 11, 480, 270);
+		ML::Box2D textBox3(0, 22, 480, 270);
+		ML::Box2D textBox4(0, 33, 480, 270);
+		ML::Box2D textBox5(0, 44, 480, 270);
+
+		string text = "Player_hp:" + to_string(Player.hp);
+		string text2 = "Enemy_hp:" + to_string(Enemy.hp);
+		string text3 = "hit_state:" + to_string(hit);
+		string text4 = "Player:" + to_string(Player.hitBase.x)+","+to_string(Player.hitBase.y)+","+to_string(Player.hitBase.w)+","+to_string(Player.hitBase.h);
+		string text5 = "Enemy:" + to_string(Enemy.hitBase.x) + "," + to_string(Enemy.hitBase.y) + "," + to_string(Enemy.hitBase.w) + "," + to_string(Enemy.hitBase.h);
+
+		font_Player->Draw(textBox, text, ML::Color(0.5f, 0.2f, 0.0f, 0.5f));
+		font_Enemy->Draw(textBox2, text2, ML::Color(0.5f, 0.2f, 0.0f, 0.5f));
+		font_Enemy->Draw(textBox3, text3, ML::Color(0.5f, 0.2f, 0.0f, 0.5f));
+		Player_hit->Draw(textBox4, text4, ML::Color(0.5f, 0.2f, 0.0f, 0.5f));
+		Enemy_hit->Draw(textBox5, text5, ML::Color(0.5f, 0.2f, 0.0f, 0.5f));
+	}
+
+	//********************************//
+	//********************************// 	   
+	//Playerの関数
+	//PlayerAの初期化
+	void PlayerA_I()
+	{
+		//バランス型
+		//ステータス
+		Player.hp = 500;
+		Player.atack = 10;
+		Player.brock = 10;
+		Player.Speed = 3;
+
+		//スタート地位
+		Player.x = 50;
+		Player.y = 150;
+
+		//Playerの状態
+		Player.move = Move::Normal;
+		Player.state = State::Stand;
+
+		Player.hitBase=ML::Box2D(0, 0, 32, 64);
+		Player.hitBase_de = ML::Box2D(0, 0, 32, 64);
+		Player.hitBase_At = ML::Box2D(0, 0, 0, 0);
+
+
+
+	}
+
+	//PlayerAの更新
+	void PlayerA_U()
+	{
+		auto inp = ge->in1->GetState();
+		Player.animCnt++;
+		Time++;
+
+		ML::Box2D me = Player.hitBase.OffsetCopy(Player.x, Player.y);//Playerの表示位置
+		ML::Box2D de = Player.hitBase_de.OffsetCopy(Player.x, Player.y);//Playerの当たり判定
+		ML::Box2D ko = Player.hitBase_At.OffsetCopy(Player.x + 10, Player.y + 10);//Playerの攻撃用
+
+
+		if (Time >= 100 && !tame) {//一秒ごとに状態を戻す
+			Player.move = Move::Normal;
+			Time = 0;
+		}
+		//Playerの動き
+		if (inp.LStick.BR.down || inp.LStick.BL.down) {
+			Player.animCnt = 0;
+		}
+		//歩く
+		if (Player.state != State::Tame) {
+			if (inp.LStick.BR.on && Player.state != State::Crouch) {
+				Player.x += Player.Speed;
+				Player.move = Move::Work;
+				if (Player.animCnt >= 36) {
+					Player.animCnt = 0;
+				}
+			}
+			if (inp.LStick.BL.on && Player.state != State::Crouch) {
+				Player.x -= Player.Speed;
+				Player.move = Move::Work;
+				if (Player.animCnt >= 36) {
+					Player.animCnt = 0;
+				}
+			}
+		}
+		//しゃがむ
+		if (inp.B2.down) {
+			if (!crouch) {
+				Player.state = State::Crouch;
+				crouch = true;
+				Player.animCnt = 0;
+				me.h -= 32;
+				ko.y	+= 32;
+				de.h -= 32;
+			}
+			else {
+				Player.state = State::Stand;
+				crouch = false;
+				Player.animCnt = 0;
+				me.h += 32;
+				ko.h += 32;
+				de.h += 32;
+			}
+		}
+
+		//ジャブ
+		if (inp.B1.down) {
+			Player.animCnt = 0;
+			Player.move = Move::Jab;
+			ko.w = 32;
+			ko.h=
+		}
+		else {
+			ko.w = 0;
+		}
+
+		///強攻撃
+		if (inp.B4.on) {
+			tameCnt++;
+			Player.move = Move::Hrz_P;
+			
+		}
+
+		if (tameCnt>=80&&inp.B4.up) {
+			Player.animCnt = 0;
+			ko.w = 50;
+			tameCnt = 0;
+			tame = true;
+		}
+		else if(Player.animCnt>=20) {
+			tame = false;
+			Player.hitBase.w = 32;
+		}
+
+		//対しゃがみ攻撃
+		if (inp.B3.down) {
+			Player.animCnt = 0;
+			Player.move = Move::Vrt_P;
+			Player.hitBase.w = 50;
+		}
+		else {
+			Player.hitBase.w = 32;
+		}
+
+		//ガード
+		if (inp.L1.on) {
+			Player.move = Move::Guard;
+		}
+	}
+
+	//PlayerAの描画
+	void PlayerA_R(Chara& c_)
+	{
+		ML::Box2D draw(-32,-12,50,100);//32,64
+		draw.Offset(c_.x, c_.y);
+		ML::Box2D src(0, 0, 32, 64);
+
+		if (c_.move == Move::Work && c_.state == State::Stand) {
+			Move_Move::Work_Anime(src, c_.animCnt);
+		}
+		if (c_.state==State::Crouch) {
+			Move_Move::Crouch(src, c_.animCnt);
+		}
+
+		if (c_.move == Move::Jab) {
+			if (c_.state == State::Stand) {
+				Move_Move::Jab(src,c_.animCnt);
+			}
+			else if (c_.state == State::Crouch) {
+				Move_Move::Jab_C(src, c_.animCnt);
+			}
+		}
+
+		if (c_.move == Move::Vrt_P) {
+			if (c_.state == State::Stand) {
+				Move_Move::Vrt_P_S(src,c_.animCnt);
+			}
+		}
+
+		if (c_.move == Move::Hrz_P&&!tame) {
+			if (c_.state == State::Stand) {
+				Move_Move::Hrz_P_S_1(src,c_.animCnt);
+			}
+		}
+		else if (tame) {
+			if (c_.state == State::Stand) {
+				Move_Move::Hrz_P_S_2(src, c_.animCnt);
+			}
+		}
+
+		if (c_.move == Move::Guard) {
+			if (c_.state == State::Stand) {
+				Move_Move::Gurad(src,c_.animCnt);
+			}
+		}
+		Player_img->Draw(draw, src);
+	}
+	void EnemyA_R(Chara& c_)
+	{
+		ML::Box2D draw(-32, -12, 50, 100);//32,64
+		draw.Offset(c_.x, c_.y);
+		ML::Box2D src(288, 0, 32, 64);
+
+		if (c_.move == Move::Work && c_.state == State::Stand) {
+			Move_Move::Work_Anime2(src, c_.animCnt);
+		}
+		if (c_.state == State::Crouch) {
+			Move_Move::Crouch2(src, c_.animCnt);
+		}
+
+		if (c_.move == Move::Jab) {
+			if (c_.state == State::Stand) {
+				Move_Move::Jab2(src, c_.animCnt);
+			}
+			else if (c_.state == State::Crouch) {
+				Move_Move::Jab_C(src, c_.animCnt);
+			}
+		}
+
+		if (c_.move == Move::Vrt_P) {
+			if (c_.state == State::Stand) {
+				Move_Move::Vrt_P_S(src, c_.animCnt);
+			}
+		}
+
+		if (c_.move == Move::Hrz_P && !tame) {
+			if (c_.state == State::Stand) {
+				Move_Move::Hrz_P_S_1(src, c_.animCnt);
+			}
+		}
+		else if (tame) {
+			if (c_.state == State::Stand) {
+				Move_Move::Hrz_P_S_2(src, c_.animCnt);
+			}
+		}
+
+		if (c_.move == Move::Guard) {
+			if (c_.state == State::Stand) {
+				Move_Move::Gurad2(src, c_.animCnt);
+			}
+		}
+		Enemy_img->Draw(draw, src);
+	}
+	//---------------------------------------------------------
+	//CPU
+	//---------------------------------------------------------
+	void Enemy_I()
+	{
+		//バランス型
+		//ステータス
+		Enemy.hp = 500;
+		Enemy.atack = 10;
+		Enemy.brock = 10;
+		Enemy.Speed = 3;
+
+		//スタート地位
+		Enemy.x = 400;
+		Enemy.y = 150;
+
+		//Playerの状態
+		Enemy.move = Move::Normal;
+		Enemy.state = State::Stand;
+
+		Enemy.hitBase = ML::Box2D(400, 150, 32, 64);
+
+	}
 }
